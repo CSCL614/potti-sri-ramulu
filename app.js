@@ -1,5 +1,5 @@
 // ===== API CONFIG =====
-const API = window.location.origin + '/api';
+const API = 'http://localhost:5000/api';
 let db = { potti: {}, trustCards: [], activities: [], gallery: [], contactInfo: {}, members: [], contacts: [] };
 let isAdmin = false;
 let editCtx = null;
