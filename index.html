@@ -10,6 +10,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Tiro+Telugu&family=Poppins:wght@300;400;500;600;700&display=swap"
         rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css">
     <style>
         :root {
             --saffron: #3E2522;
@@ -2104,8 +2105,9 @@
                         </div>
                     </div>
                     <div class="form-row single">
-                        <div><label class="form-label">Photo URL</label><input id="ap-photo" type="text"
-                                placeholder="https://...">
+                        <div><label class="form-label">Photo URL</label><input type="file" accept="image/*"
+                                onchange="handleImageUpload(this, 'ap-photo', RATIO_POTTI)"><input id="ap-photo"
+                                type="hidden">
                         </div>
                     </div>
                     <div class="form-row single">
@@ -2121,8 +2123,8 @@
                 <div class="admin-form-card">
                     <h3>➕ Add New Committee Member</h3>
                     <div class="form-row single">
-                        <div><label class="form-label">Photo Upload</label><input type="file" accept="image"
-                                onchange="handleImageUpload(this, 'tc-photo')"><input id="tc-photo" type="hidden"></div>
+                        <div><label class="form-label">Photo Upload</label><input type="file" accept="image/*"
+                                onchange="handleImageUpload(this, 'tc-photo', RATIO_TRUST)"><input id="tc-photo" type="hidden"></div>
                     </div>
                     <div class="form-row">
                         <div><label class="form-label">Member Name (Telugu)</label><input id="tc-tte" type="text"></div>
@@ -2161,8 +2163,8 @@
                 <div class="admin-form-card">
                     <h3>➕ Add New Activity</h3>
                     <div class="form-row single">
-                        <div><label class="form-label">Photo Upload</label><input type="file" accept="image/"
-                                onchange="handleImageUpload(this, 'ac-photo')"><input id="ac-photo" type="hidden"></div>
+                        <div><label class="form-label">Photo Upload</label><input type="file" accept="image/*"
+                                onchange="handleImageUpload(this, 'ac-photo', RATIO_ACT)"><input id="ac-photo" type="hidden"></div>
                     </div>
                     <div class="form-row">
                         <div><label class="form-label">Title (Telugu)</label><input id="ac-tte" type="text"></div>
@@ -2207,7 +2209,7 @@
                     <h3>➕ Add Gallery Item</h3>
                     <div class="form-row single">
                         <div><label class="form-label">Photos Upload (Multiple)</label><input type="file"
-                                accept="image/*" multiple onchange="handleMultipleImageUpload(this, 'gi-photo')"><input
+                                accept="image/*" multiple onchange="handleMultipleImageUpload(this, 'gi-photo', RATIO_GAL)"><input
                                 id="gi-photo" type="hidden"></div>
                     </div>
                     <div class="form-row">
@@ -2300,7 +2302,7 @@
                     </div>
                     <div class="form-row">
                         <div><label class="form-label">Photo Upload</label><input type="file" accept="image/*"
-                                onchange="handleImageUpload(this, 'm-photo')"><input id="m-photo" type="hidden"></div>
+                                onchange="handleImageUpload(this, 'm-photo', RATIO_MEMBER)"><input id="m-photo" type="hidden"></div>
                         <div><label class="form-label">తండ్రి పేరు</label><input id="m-father" type="text"
                                 placeholder="Father's Name"></div>
                     </div>
@@ -2409,6 +2411,67 @@
 
     <div class="toast" id="toast"></div>
 
+    <!-- ===== IMAGE CROP MODAL ===== -->
+    <div id="crop-overlay" style="
+        display:none; position:fixed; inset:0; z-index:99999;
+        background:rgba(0,0,0,0.92); flex-direction:column;
+        align-items:center; justify-content:center; gap:0;
+    ">
+        <div style="
+            background:#1a1208; border:1px solid #eaa906;
+            border-radius:12px; overflow:hidden;
+            max-width:92vw; max-height:92vh;
+            display:flex; flex-direction:column;
+            box-shadow:0 8px 48px rgba(0,0,0,0.7);
+        ">
+            <!-- Header -->
+            <div style="
+                background:linear-gradient(135deg,#3E2522,#6B3A2A);
+                padding:14px 20px; display:flex;
+                align-items:center; justify-content:space-between;
+            ">
+                <div style="color:#eaa906; font-family:'Poppins',sans-serif; font-size:15px; font-weight:600;">
+                    ✂️ Crop Image
+                </div>
+                <button onclick="cancelCrop()" style="
+                    background:none; border:1px solid rgba(255,255,255,0.3);
+                    color:rgba(255,255,255,0.7); border-radius:50%; width:28px; height:28px;
+                    cursor:pointer; font-size:15px; line-height:1;
+                ">✕</button>
+            </div>
+            <!-- Crop area -->
+            <div style="padding:12px; overflow:auto; max-height:62vh; background:#0d0d0d;">
+                <img id="crop-image-el" src="" style="max-width:100%; display:block;">
+            </div>
+            <!-- Controls -->
+            <div style="
+                padding:14px 20px; background:#1a1208;
+                display:flex; flex-wrap:wrap; gap:8px;
+                align-items:center; justify-content:center;
+                border-top:1px solid rgba(234,169,6,0.2);
+            ">
+                <div style="display:flex; gap:6px; flex-wrap:wrap; justify-content:center;">
+                    <button onclick="cropperInst.rotate(-90)" title="Rotate Left" style="background:#3E2522;color:#eaa906;border:1px solid #eaa906;border-radius:6px;padding:7px 12px;cursor:pointer;font-size:13px;">↺ −90°</button>
+                    <button onclick="cropperInst.rotate(90)" title="Rotate Right" style="background:#3E2522;color:#eaa906;border:1px solid #eaa906;border-radius:6px;padding:7px 12px;cursor:pointer;font-size:13px;">↻ +90°</button>
+                    <button onclick="cropperInst.scaleX(-cropperInst.getData().scaleX||1)" title="Flip H" style="background:#3E2522;color:#eaa906;border:1px solid #eaa906;border-radius:6px;padding:7px 12px;cursor:pointer;font-size:13px;">⇔ Flip</button>
+                    <button onclick="setCropAspect(1)" style="background:#3E2522;color:rgba(255,255,255,0.75);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:7px 12px;cursor:pointer;font-size:12px;">1:1</button>
+                    <button onclick="setCropAspect(4/3)" style="background:#3E2522;color:rgba(255,255,255,0.75);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:7px 12px;cursor:pointer;font-size:12px;">4:3</button>
+                    <button onclick="setCropAspect(16/9)" style="background:#3E2522;color:rgba(255,255,255,0.75);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:7px 12px;cursor:pointer;font-size:12px;">16:9</button>
+                    <button onclick="setCropAspect(NaN)" style="background:#3E2522;color:rgba(255,255,255,0.75);border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:7px 12px;cursor:pointer;font-size:12px;">Free</button>
+                </div>
+                <button onclick="applyCrop()" style="
+                    background:linear-gradient(135deg,#eaa906,#c88a00);
+                    color:#1a1208; border:none; border-radius:8px;
+                    padding:10px 28px; font-family:'Poppins',sans-serif;
+                    font-size:14px; font-weight:700; cursor:pointer;
+                    box-shadow:0 4px 16px rgba(234,169,6,0.35);
+                    margin-left:8px;
+                ">✔ Use Cropped Image</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
     <script src="app.js"></script>
 </body>
 

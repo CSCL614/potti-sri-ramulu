@@ -228,6 +228,13 @@ function loadPottiForm() {
   setVal('ap-p1te', p.p1te); setVal('ap-p1en', p.p1en); setVal('ap-qte', p.qte); setVal('ap-qen', p.qen);
   setVal('ap-p2te', p.p2te); setVal('ap-p2en', p.p2en); setVal('ap-photo', p.photo || ''); setVal('ap-chips', p.chips || '');
 }
+// Aspect Ratios
+const RATIO_MEMBER = 1;
+const RATIO_TRUST = 280/260; // 1.076
+const RATIO_ACT = 280/220;   // 1.272
+const RATIO_GAL = 4/3;       // 1.333
+const RATIO_POTTI = 3/4;
+
 async function savePotti() {
   const data = { nte: val('ap-nte'), nen: val('ap-nen'), dates: val('ap-dates'), p1te: val('ap-p1te'), p1en: val('ap-p1en'), qte: val('ap-qte'), qen: val('ap-qen'), p2te: val('ap-p2te'), p2en: val('ap-p2en'), photo: val('ap-photo'), chips: val('ap-chips') };
   const res = await fetch(API + '/potti', { method: 'PUT', headers: authHeaders(), body: JSON.stringify(data) });
@@ -251,7 +258,7 @@ function openEditTrust(id) {
   editCtx = { type: 'trust', id };
   document.getElementById('edit-modal-title').textContent = 'Edit Committee Member';
   document.getElementById('edit-modal-body').innerHTML = `
-    <label>Photo Upload</label><input type="file" accept="image/*" onchange="handleImageUpload(this, 'ef-photo')"><input id="ef-photo" type="hidden" value="${esc(c.photo || '')}">
+    <label>Photo Upload</label><input type="file" accept="image/*" onchange="handleImageUpload(this, 'ef-photo', RATIO_TRUST)"><input id="ef-photo" type="hidden" value="${esc(c.photo || '')}">
     <label>Member Name (Telugu)</label><input id="ef-tte" value="${esc(c.tte)}">
     <label>Member Name (English)</label><input id="ef-ten" value="${esc(c.ten)}">
     <label>Member Role (Telugu)</label><textarea id="ef-cte">${esc(c.cte)}</textarea>
@@ -277,7 +284,7 @@ function openEditAct(id) {
   editCtx = { type: 'act', id };
   document.getElementById('edit-modal-title').textContent = 'Edit Activity';
   document.getElementById('edit-modal-body').innerHTML = `
-    <label>Photo Upload</label><input type="file" accept="image/*" onchange="handleImageUpload(this, 'ef-photo')"><input id="ef-photo" type="hidden" value="${esc(a.photo || '')}">
+    <label>Photo Upload</label><input type="file" accept="image/*" onchange="handleImageUpload(this, 'ef-photo', RATIO_ACT)"><input id="ef-photo" type="hidden" value="${esc(a.photo || '')}">
     <label>Title (Telugu)</label><input id="ef-tte" value="${esc(a.tte)}">
     <label>Title (English)</label><input id="ef-ten" value="${esc(a.ten)}">
     <label>Description (Telugu)</label><textarea id="ef-cte">${esc(a.dte)}</textarea>
@@ -311,7 +318,7 @@ function openEditGal(id) {
   editCtx = { type: 'gal', id };
   document.getElementById('edit-modal-title').textContent = 'Edit Gallery Item';
   document.getElementById('edit-modal-body').innerHTML = `
-    <label>Photos Upload (Multiple)</label><input type="file" accept="image/*" multiple onchange="handleMultipleImageUpload(this, 'ef-photo')"><input id="ef-photo" type="hidden" value="${esc(JSON.stringify(g.photos || [])).replace(/"/g, '&quot;')}">
+    <label>Photos Upload (Multiple)</label><input type="file" accept="image/*" multiple onchange="handleMultipleImageUpload(this, 'ef-photo', RATIO_GAL)"><input id="ef-photo" type="hidden" value="${esc(JSON.stringify(g.photos || [])).replace(/"/g, '&quot;')}">
     <label>Label (Telugu)</label><input id="ef-tte" value="${esc(g.lte)}">
     <label>Label (English)</label><input id="ef-ten" value="${esc(g.len)}">`;
   document.getElementById('edit-overlay').classList.add('active');
@@ -380,45 +387,104 @@ function renderMessages() {
 async function markRead(id) { await fetch(API + '/contacts/' + id + '/read', { method: 'PUT', headers: authHeaders() }); const c = db.contacts.find(x => x._id === id); if (c) c.status = 'Read'; renderMessages(); refreshDash(); }
 async function delMsg(id) { if (!confirm('Delete?')) return; await fetch(API + '/contacts/' + id, { method: 'DELETE', headers: authHeaders() }); db.contacts = db.contacts.filter(c => c._id !== id); renderMessages(); refreshDash(); toast('🗑 Deleted.'); }
 
-// ===== IMAGE UPLOAD UTILS =====
-function handleMultipleImageUpload(input, targetId) {
-  const files = input.files; if (!files.length) return;
-  const results = []; let processed = 0;
-  for (let i = 0; i < files.length; i++) {
-    const reader = new FileReader();
-    reader.onload = function (e) {
-      const img = new Image();
-      img.onload = function () {
-        const canvas = document.createElement('canvas'); const MAX_WIDTH = 400;
-        let width = img.width, height = img.height;
-        if (width > MAX_WIDTH) { height = Math.round(height * MAX_WIDTH / width); width = MAX_WIDTH; }
-        canvas.width = width; canvas.height = height;
-        const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, width, height);
-        results.push(canvas.toDataURL('image/jpeg', 0.7)); processed++;
-        if (processed === files.length) { document.getElementById(targetId).value = JSON.stringify(results); toast(`✅ ${files.length} images processed & ready!`); }
-      };
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(files[i]);
-  }
+// ===== IMAGE CROP & UPLOAD UTILS =====
+let cropperInst = null;      // active Cropper.js instance
+let _cropTarget = null;      // { targetId, mode:'single'|'multi', queue, results }
+
+function _openCropModal(dataUrl, onApply, ratio) {
+  const overlay = document.getElementById('crop-overlay');
+  const imgEl   = document.getElementById('crop-image-el');
+  if (cropperInst) { cropperInst.destroy(); cropperInst = null; }
+  imgEl.src = dataUrl;
+  overlay.style.display = 'flex';
+  imgEl.onload = function () {
+    cropperInst = new Cropper(imgEl, {
+      viewMode: 1,
+      dragMode: 'move',
+      aspectRatio: ratio || NaN,
+      autoCropArea: 1,
+      responsive: true,
+      restore: false,
+      guides: true,
+      background: true,
+      cropBoxMovable: true,
+      cropBoxResizable: true
+    });
+    overlay._onApply = onApply;
+  };
 }
-function handleImageUpload(input, targetId) {
+
+function applyCrop() {
+  if (!cropperInst) return;
+  const canvas = cropperInst.getCroppedCanvas({ maxWidth: 1200, imageSmoothingQuality: 'high' });
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+  const overlay = document.getElementById('crop-overlay');
+  if (typeof overlay._onApply === 'function') overlay._onApply(dataUrl);
+  _closeCropModal();
+}
+
+function cancelCrop() {
+  if (_cropTarget && _cropTarget.mode === 'multi') {
+    const t = _cropTarget;
+    if (t.results.length > 0) {
+      document.getElementById(t.targetId).value = JSON.stringify(t.results);
+      toast(`✅ ${t.results.length} image(s) cropped & ready!`);
+    } else {
+      toast('⚠️ Crop cancelled.');
+    }
+    _cropTarget = null;
+  } else {
+    toast('⚠️ Crop cancelled.');
+  }
+  _closeCropModal();
+}
+
+function _closeCropModal() {
+  const overlay = document.getElementById('crop-overlay');
+  overlay.style.display = 'none';
+  if (cropperInst) { cropperInst.destroy(); cropperInst = null; }
+}
+
+function setCropAspect(ratio) {
+  if (cropperInst) cropperInst.setAspectRatio(ratio);
+}
+
+function handleImageUpload(input, targetId, ratio) {
   const file = input.files[0]; if (!file) return;
   const reader = new FileReader();
   reader.onload = function (e) {
-    const img = new Image();
-    img.onload = function () {
-      const canvas = document.createElement('canvas'); const MAX_WIDTH = 600;
-      let width = img.width, height = img.height;
-      if (width > MAX_WIDTH) { height = Math.round(height * MAX_WIDTH / width); width = MAX_WIDTH; }
-      canvas.width = width; canvas.height = height;
-      const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, width, height);
-      document.getElementById(targetId).value = canvas.toDataURL('image/jpeg', 0.82);
-      toast('✅ Image processed & ready!');
-    };
-    img.src = e.target.result;
+    _openCropModal(e.target.result, function(croppedDataUrl) {
+      document.getElementById(targetId).value = croppedDataUrl;
+      toast('✅ Image cropped & ready!');
+    }, ratio);
   };
   reader.readAsDataURL(file);
+}
+
+function handleMultipleImageUpload(input, targetId, ratio) {
+  const files = Array.from(input.files); if (!files.length) return;
+  const results = [];
+  let queueIndex = 0;
+
+  function cropNext() {
+    if (queueIndex >= files.length) {
+      document.getElementById(targetId).value = JSON.stringify(results);
+      toast(`✅ ${results.length} image(s) cropped & ready!`);
+      _cropTarget = null;
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = function (e) {
+      _openCropModal(e.target.result, function(croppedDataUrl) {
+        results.push(croppedDataUrl);
+        queueIndex++;
+        cropNext();
+      }, ratio);
+    };
+    reader.readAsDataURL(files[queueIndex]);
+    _cropTarget = { targetId, mode: 'multi', queue: files, results };
+  }
+  cropNext();
 }
 
 // ===== UTILS =====
