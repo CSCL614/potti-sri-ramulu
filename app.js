@@ -124,11 +124,11 @@ function renderGallery() {
     if (photos.length === 1) bgLayer = `<div style="position:absolute;top:0;left:0;width:100%;height:100%;background-image:url('${esc(photos[0])}');background-size:cover;background-position:center;z-index:0"></div>`;
     else if (photos.length > 1) bgLayer = `<div class="gallery-slider" data-idx="0">${photos.map((p, idx) => `<div class="g-slide ${idx === 0 ? 'active' : ''}" style="background-image:url('${esc(p)}')"></div>`).join('')}</div>`;
     return `
-    <div class="gallery-item" style="${i === 0 ? 'grid-column:span 2;aspect-ratio:8/3;' : ''}" onclick="openLightbox('${g._id}')">
+    <div class="gallery-item" style="${i === 0 ? 'grid-column:span 2;aspect-ratio:8/3;' : ''}">
       ${bgLayer}
       <div style="position:absolute;top:0;left:0;width:100%;height:100%;background:linear-gradient(to top, rgba(0,0,0,0.95),transparent 70%);z-index:1;pointer-events:none;"></div>
       <div class="gallery-inner" style="z-index:2;position:relative;${photos.length ? 'background:transparent;' : ''}">
-        ${isAdmin ? `<button class="gallery-del" onclick="event.stopPropagation(); delGallery('${g._id}')">🗑 Remove</button>` : ''}
+        ${isAdmin ? `<button class="gallery-del" onclick="delGallery('${g._id}')">🗑 Remove</button>` : ''}
         ${photos.length ? '' : '<span class="gallery-icon">🖼️</span>'}
         <span class="gallery-label te" style="${photos.length ? 'text-shadow:0 2px 4px rgba(0,0,0,0.8);color:white;' : ''}">${esc(g.lte)}</span>
         <span class="gallery-label en" style="${photos.length ? 'text-shadow:0 2px 4px rgba(0,0,0,0.8);color:white;' : ''}">${esc(g.len)}</span>
@@ -303,7 +303,7 @@ function renderGalTable() {
     const photos = g.photos || [];
     let t = '—';
     if (photos.length) t = `<img src="${esc(photos[0])}" style="width:60px;height:40px;border-radius:4px;object-fit:cover"><br><small>${photos.length} imgs</small>`;
-    return `<tr><td>${i + 1}</td><td>${t}</td><td>${esc(g.lte)}</td><td>${esc(g.len)}</td><td><button class="action-btn" style="background:#4CAF50;color:white;margin-right:4px;" onclick="openGalleryUpload('${g._id}')">📸 Upload Photos</button><button class="action-btn edit" onclick="openEditGal('${g._id}')">✏️ Edit</button><button class="action-btn delete" onclick="delGallery('${g._id}')">🗑 Del</button></td></tr>`;
+    return `<tr><td>${i + 1}</td><td>${t}</td><td>${esc(g.lte)}</td><td>${esc(g.len)}</td><td><button class="action-btn edit" onclick="openEditGal('${g._id}')">✏️ Edit</button><button class="action-btn delete" onclick="delGallery('${g._id}')">🗑 Del</button></td></tr>`;
   }).join('');
 }
 function openEditGal(id) {
@@ -317,109 +317,6 @@ function openEditGal(id) {
   document.getElementById('edit-overlay').classList.add('active');
 }
 async function delGallery(id) { if (!confirm('Remove?')) return; await fetch(API + '/gallery/' + id, { method: 'DELETE', headers: authHeaders() }); db.gallery = db.gallery.filter(g => g._id !== id); renderGallery(); renderGalTable(); refreshDash(); toast('🗑 Removed.'); }
-
-// --- GALLERY LIGHTBOX ---
-let lbPhotos = [];
-let lbIdx = 0;
-
-function openLightbox(id) {
-  const g = db.gallery.find(x => x._id === id);
-  if (!g || !g.photos || !g.photos.length) return toast('⚠️ No photos available.');
-  lbPhotos = g.photos;
-  lbIdx = 0;
-  document.getElementById('lb-title').innerHTML = `<span class="te">${esc(g.lte)}</span><span class="en">${esc(g.len)}</span>`;
-  updateLightboxView();
-  document.getElementById('gallery-lightbox').classList.add('active');
-}
-
-function updateLightboxView() {
-  document.getElementById('lb-img').src = lbPhotos[lbIdx];
-  document.getElementById('lb-counter').textContent = `${lbIdx + 1} / ${lbPhotos.length}`;
-  document.getElementById('lb-prev').style.display = lbPhotos.length > 1 ? 'flex' : 'none';
-  document.getElementById('lb-next').style.display = lbPhotos.length > 1 ? 'flex' : 'none';
-}
-
-function prevLbImg(e) { if(e) e.stopPropagation(); lbIdx = (lbIdx - 1 + lbPhotos.length) % lbPhotos.length; updateLightboxView(); }
-function nextLbImg(e) { if(e) e.stopPropagation(); lbIdx = (lbIdx + 1) % lbPhotos.length; updateLightboxView(); }
-
-function closeLightbox(e) {
-  if (e && e.target && (e.target.id === 'lb-prev' || e.target.id === 'lb-next' || e.target.id === 'lb-img')) return;
-  document.getElementById('gallery-lightbox').classList.remove('active');
-}
-// --- GALLERY DYNAMIC UPLOAD MODAL ---
-let currentGalleryUploadFiles = [];
-
-function openGalleryUpload(id) {
-  const g = db.gallery.find(x => x._id === id); if (!g) return;
-  document.getElementById('gu-card-id').value = id;
-  document.getElementById('gu-title').textContent = `🖼️ Upload to Gallery`;
-  document.getElementById('gu-subtitle').textContent = `Card: ${esc(g.len)} - ${esc(g.lte)}`;
-  document.getElementById('gu-preview-grid').innerHTML = '';
-  document.getElementById('gu-file-input').value = '';
-  currentGalleryUploadFiles = [];
-  document.getElementById('gallery-upload-overlay').classList.add('active');
-}
-
-function closeGalleryUpload() {
-  document.getElementById('gallery-upload-overlay').classList.remove('active');
-}
-document.getElementById('gallery-upload-overlay').addEventListener('click', function (e) { if (e.target === this) closeGalleryUpload(); });
-
-function handleGalleryUploadPreview(input) {
-  if (!input.files || !input.files.length) return;
-  const grid = document.getElementById('gu-preview-grid');
-  grid.innerHTML = '';
-  currentGalleryUploadFiles = Array.from(input.files);
-  
-  currentGalleryUploadFiles.forEach(file => {
-    const reader = new FileReader();
-    reader.onload = e => {
-      grid.innerHTML += `<div style="aspect-ratio:1; border-radius:4px; overflow:hidden; border:1px solid var(--border)"><img src="${e.target.result}" style="width:100%;height:100%;object-fit:cover;"></div>`;
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-async function submitGalleryUpload() {
-  if (!currentGalleryUploadFiles.length) { toast('⚠️ Please select at least one image!'); return; }
-  const id = document.getElementById('gu-card-id').value;
-  const btn = document.getElementById('gu-submit-btn');
-  const ogText = btn.textContent;
-  btn.textContent = '⏳ Uploading...'; btn.disabled = true;
-  
-  try {
-    const formData = new FormData();
-    currentGalleryUploadFiles.forEach(file => formData.append('images', file));
-    
-    // Auth headers strictly skipping Content-Type to allow fetch boundaries
-    const headers = new Headers();
-    const token = localStorage.getItem('pst_token');
-    if (token) headers.append('Authorization', `Bearer ${token}`);
-    
-    const res = await fetch(`${API}/gallery/${id}/upload`, {
-      method: 'POST',
-      headers,
-      body: formData
-    });
-    
-    if (!res.ok) throw new Error(await res.text());
-    
-    const updatedItem = await res.json();
-    const idx = db.gallery.findIndex(g => g._id === id);
-    if (idx !== -1) {
-      db.gallery[idx] = updatedItem;
-      renderGallery();
-      renderGalTable();
-    }
-    toast('✅ Upload successful!');
-    closeGalleryUpload();
-  } catch (err) {
-    console.error(err);
-    toast('❌ Upload failed.');
-  } finally {
-    btn.textContent = ogText; btn.disabled = false;
-  }
-}
 
 // ===== EDIT MODAL =====
 function closeEditModal() { document.getElementById('edit-overlay').classList.remove('active'); editCtx = null; }
