@@ -124,11 +124,11 @@ function renderGallery() {
     if (photos.length === 1) bgLayer = `<div style="position:absolute;top:0;left:0;width:100%;height:100%;background-image:url('${esc(photos[0])}');background-size:cover;background-position:center;z-index:0"></div>`;
     else if (photos.length > 1) bgLayer = `<div class="gallery-slider" data-idx="0">${photos.map((p, idx) => `<div class="g-slide ${idx === 0 ? 'active' : ''}" style="background-image:url('${esc(p)}')"></div>`).join('')}</div>`;
     return `
-    <div class="gallery-item" style="${i === 0 ? 'grid-column:span 2;aspect-ratio:8/3;' : ''}">
+    <div class="gallery-item" style="${i === 0 ? 'grid-column:span 2;aspect-ratio:8/3;' : ''}" onclick="openLightbox('${g._id}')">
       ${bgLayer}
       <div style="position:absolute;top:0;left:0;width:100%;height:100%;background:linear-gradient(to top, rgba(0,0,0,0.95),transparent 70%);z-index:1;pointer-events:none;"></div>
       <div class="gallery-inner" style="z-index:2;position:relative;${photos.length ? 'background:transparent;' : ''}">
-        ${isAdmin ? `<button class="gallery-del" onclick="delGallery('${g._id}')">🗑 Remove</button>` : ''}
+        ${isAdmin ? `<button class="gallery-del" onclick="event.stopPropagation(); delGallery('${g._id}')">🗑 Remove</button>` : ''}
         ${photos.length ? '' : '<span class="gallery-icon">🖼️</span>'}
         <span class="gallery-label te" style="${photos.length ? 'text-shadow:0 2px 4px rgba(0,0,0,0.8);color:white;' : ''}">${esc(g.lte)}</span>
         <span class="gallery-label en" style="${photos.length ? 'text-shadow:0 2px 4px rgba(0,0,0,0.8);color:white;' : ''}">${esc(g.len)}</span>
@@ -318,6 +318,34 @@ function openEditGal(id) {
 }
 async function delGallery(id) { if (!confirm('Remove?')) return; await fetch(API + '/gallery/' + id, { method: 'DELETE', headers: authHeaders() }); db.gallery = db.gallery.filter(g => g._id !== id); renderGallery(); renderGalTable(); refreshDash(); toast('🗑 Removed.'); }
 
+// --- GALLERY LIGHTBOX ---
+let lbPhotos = [];
+let lbIdx = 0;
+
+function openLightbox(id) {
+  const g = db.gallery.find(x => x._id === id);
+  if (!g || !g.photos || !g.photos.length) return toast('⚠️ No photos available.');
+  lbPhotos = g.photos;
+  lbIdx = 0;
+  document.getElementById('lb-title').innerHTML = `<span class="te">${esc(g.lte)}</span><span class="en">${esc(g.len)}</span>`;
+  updateLightboxView();
+  document.getElementById('gallery-lightbox').classList.add('active');
+}
+
+function updateLightboxView() {
+  document.getElementById('lb-img').src = lbPhotos[lbIdx];
+  document.getElementById('lb-counter').textContent = `${lbIdx + 1} / ${lbPhotos.length}`;
+  document.getElementById('lb-prev').style.display = lbPhotos.length > 1 ? 'flex' : 'none';
+  document.getElementById('lb-next').style.display = lbPhotos.length > 1 ? 'flex' : 'none';
+}
+
+function prevLbImg(e) { if(e) e.stopPropagation(); lbIdx = (lbIdx - 1 + lbPhotos.length) % lbPhotos.length; updateLightboxView(); }
+function nextLbImg(e) { if(e) e.stopPropagation(); lbIdx = (lbIdx + 1) % lbPhotos.length; updateLightboxView(); }
+
+function closeLightbox(e) {
+  if (e && e.target && (e.target.id === 'lb-prev' || e.target.id === 'lb-next' || e.target.id === 'lb-img')) return;
+  document.getElementById('gallery-lightbox').classList.remove('active');
+}
 // --- GALLERY DYNAMIC UPLOAD MODAL ---
 let currentGalleryUploadFiles = [];
 
